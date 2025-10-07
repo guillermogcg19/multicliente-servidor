@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ServidorMulti {
 
-    // Mapa: nombre -> UnCliente
+
     static final ConcurrentHashMap<String, UnCliente> clientes = new ConcurrentHashMap<>();
 
     public static void main(String[] args) {
@@ -23,7 +23,7 @@ public class ServidorMulti {
                 String nombreTemporal = "user" + contador++;
                 UnCliente uncliente = new UnCliente(socket, nombreTemporal);
 
- 
+
                 clientes.put(nombreTemporal, uncliente);
 
                 Thread hilo = new Thread(uncliente, "cli-" + nombreTemporal);

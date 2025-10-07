@@ -19,7 +19,7 @@ public class ParaMandar implements Runnable {
     @Override
     public void run() {
         try {
-            // Handshake: pedir y enviar nick al servidor
+
             System.out.print("Tu nombre: ");
             String nombre = teclado.readLine();
             if (nombre == null || nombre.isBlank()) {

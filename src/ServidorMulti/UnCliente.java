@@ -10,7 +10,7 @@ public class UnCliente implements Runnable {
     final DataOutputStream salida;
     final DataInputStream entrada;
 
-
+    
     private String nombre;
 
     UnCliente(Socket s, String nombreInicial) throws IOException {
@@ -28,7 +28,7 @@ public class UnCliente implements Runnable {
                 String mensaje = entrada.readUTF();
                 if (mensaje == null) break;
 
-
+     
                 if (mensaje.startsWith("NICK ")) {
                     String nuevo = mensaje.substring(5).trim();
                     if (nuevo.isEmpty()) {
@@ -39,17 +39,17 @@ public class UnCliente implements Runnable {
                         enviarSistema("Ese nombre ya está en uso. Elige otro.");
                         continue;
                     }
-                    // actualizar registro en el mapa
+         
                     ServidorMulti.clientes.remove(this.nombre);
                     String anterior = this.nombre;
                     this.nombre = nuevo;
                     ServidorMulti.clientes.put(this.nombre, this);
                     enviarSistema("Nombre actualizado a '" + this.nombre + "'.");
-                    broadcastSistema("El usuario '" + anterior + "' ahora es '" + this.nombre + "'.");
+                    broadcastSistemaExcept("El usuario '" + anterior + "' ahora es '" + this.nombre + "'.", this);
                     continue;
                 }
 
-                // Mensaje privado: @dest texto
+             
                 if (mensaje.startsWith("@")) {
                     String[] partes = mensaje.split("\\s+", 2);
                     if (partes.length < 2) {
@@ -64,21 +64,18 @@ public class UnCliente implements Runnable {
                         enviarSistema("No existe el usuario '" + aQuien + "'.");
                         continue;
                     }
+          
                     destino.enviar("[privado] " + nombre + ": " + texto);
-                  
-                    if (destino != this) {
-                        enviar("[privado a " + aQuien + "] " + nombre + ": " + texto);
-                    }
                     continue;
                 }
 
-           
-                broadcast(nombre + ": " + mensaje);
+                
+                broadcastExcept(nombre + ": " + mensaje, this);
             }
         } catch (IOException ex) {
-  
+            
         } finally {
-           
+         
             try { entrada.close(); } catch (IOException ignored) {}
             try { salida.close(); } catch (IOException ignored) {}
             try { socket.close(); } catch (IOException ignored) {}
@@ -86,7 +83,6 @@ public class UnCliente implements Runnable {
             broadcastSistema("El usuario '" + nombre + "' se ha desconectado.");
         }
     }
-
 
     void enviar(String msg) {
         try { salida.writeUTF(msg); salida.flush(); } catch (IOException ignored) {}
@@ -100,6 +96,20 @@ public class UnCliente implements Runnable {
         for (UnCliente c : ServidorMulti.clientes.values()) {
             c.enviar(msg);
         }
+    }
+
+
+    void broadcastExcept(String msg, UnCliente remitente) {
+        for (UnCliente c : ServidorMulti.clientes.values()) {
+            if (c != remitente) {
+                c.enviar(msg);
+            }
+        }
+    }
+
+
+    void broadcastSistemaExcept(String msg, UnCliente remitente) {
+        broadcastExcept("[sistema] " + msg, remitente);
     }
 
     void broadcastSistema(String msg) {
