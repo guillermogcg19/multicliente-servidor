@@ -7,12 +7,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ServidorMulti {
 
+    static ConcurrentHashMap<String, UnCliente> clientes = new ConcurrentHashMap<>();
+    static int contadorUsuarios = 1;
 
-    static final ConcurrentHashMap<String, UnCliente> clientes = new ConcurrentHashMap<>();
+    // Almacén de bloqueos (puede cambiarse a base de datos)
+    static BlockStore blocks = new InMemoryBlockStore();
 
     public static void main(String[] args) {
         int puerto = 8080;
-        int contador = 1;
 
         try (ServerSocket servidorSocket = new ServerSocket(puerto)) {
             System.out.println("Servidor iniciado en el puerto " + puerto);
@@ -20,19 +22,18 @@ public class ServidorMulti {
             while (true) {
                 Socket socket = servidorSocket.accept();
 
-                String nombreTemporal = "user" + contador++;
+                String nombreTemporal = "usuario" + contadorUsuarios++;
                 UnCliente uncliente = new UnCliente(socket, nombreTemporal);
-
+                Thread hilo = new Thread(uncliente, "cli-" + nombreTemporal);
 
                 clientes.put(nombreTemporal, uncliente);
-
-                Thread hilo = new Thread(uncliente, "cli-" + nombreTemporal);
                 hilo.start();
 
                 System.out.println("Se conectó: " + nombreTemporal);
             }
         } catch (IOException e) {
-            System.out.println("Error en servidor: " + e.getMessage());
+            System.err.println("Error en servidor: " + e.getMessage());
+            e.printStackTrace(System.err);
         }
     }
 }
