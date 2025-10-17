@@ -1,118 +1,144 @@
 package servidormulti;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.Socket;
+import java.util.Set;
 
 public class UnCliente implements Runnable {
+
+    private static final String TAG_SYS = "[sistema] ";
+    private static final int LIMITE = 3;
     private final Socket socket;
-    final DataOutputStream salida;
-    final DataInputStream entrada;
+    private final DataInputStream entrada;
+    private final DataOutputStream salida;
+    private final Database db;
 
-    
     private String nombre;
+    private boolean autenticado = false;
+    private int mensajesEnviados = 0;
 
-    UnCliente(Socket s, String nombreInicial) throws IOException {
+    UnCliente(Socket s, String nombreInicial, Database db) throws IOException {
         this.socket = s;
-        this.salida = new DataOutputStream(s.getOutputStream());
         this.entrada = new DataInputStream(s.getInputStream());
+        this.salida = new DataOutputStream(s.getOutputStream());
+        this.db = db;
         this.nombre = nombreInicial;
-        enviarSistema("Bienvenido. Tu nombre temporal es '" + nombre + "'. Envía 'NICK <nuevoNombre>' para cambiarlo.");
+
+        enviarSistema("Eres " + nombre + ". Solo puedes enviar " + LIMITE + " mensajes sin registrarte.");
+        enviarSistema("Comandos: REGISTER <usuario> <pass>, LOGIN <usuario> <pass>, BLOCK <usuario>, UNBLOCK <usuario>, BLOCKS");
     }
 
     @Override
     public void run() {
         try {
             while (true) {
-                String mensaje = entrada.readUTF();
-                if (mensaje == null) break;
+                String msg = entrada.readUTF();
+                if (msg == null) break;
 
-     
-                if (mensaje.startsWith("NICK ")) {
-                    String nuevo = mensaje.substring(5).trim();
-                    if (nuevo.isEmpty()) {
-                        enviarSistema("Nombre no válido.");
-                        continue;
-                    }
-                    if (ServidorMulti.clientes.containsKey(nuevo)) {
-                        enviarSistema("Ese nombre ya está en uso. Elige otro.");
-                        continue;
-                    }
-         
-                    ServidorMulti.clientes.remove(this.nombre);
-                    String anterior = this.nombre;
-                    this.nombre = nuevo;
-                    ServidorMulti.clientes.put(this.nombre, this);
-                    enviarSistema("Nombre actualizado a '" + this.nombre + "'.");
-                    broadcastSistemaExcept("El usuario '" + anterior + "' ahora es '" + this.nombre + "'.", this);
+                if (msg.toUpperCase().startsWith("REGISTER ")) { registrar(msg); continue; }
+                if (msg.toUpperCase().startsWith("LOGIN ")) { login(msg); continue; }
+                if (msg.toUpperCase().startsWith("BLOCK ")) { bloquear(msg); continue; }
+                if (msg.toUpperCase().startsWith("UNBLOCK ")) { desbloquear(msg); continue; }
+                if (msg.equalsIgnoreCase("BLOCKS")) { listarBloqueos(); continue; }
+
+                if (!autenticado && mensajesEnviados >= LIMITE) {
+                    enviarSistema("Has alcanzado el límite de mensajes. Regístrate o inicia sesión.");
                     continue;
                 }
 
-             
-                if (mensaje.startsWith("@")) {
-                    String[] partes = mensaje.split("\\s+", 2);
-                    if (partes.length < 2) {
-                        enviarSistema("Formato: @destinatario mensaje");
-                        continue;
-                    }
-                    String aQuien = partes[0].substring(1);
-                    String texto = partes[1];
-
-                    UnCliente destino = ServidorMulti.clientes.get(aQuien);
-                    if (destino == null) {
-                        enviarSistema("No existe el usuario '" + aQuien + "'.");
-                        continue;
-                    }
-          
-                    destino.enviar("[privado] " + nombre + ": " + texto);
-                    continue;
+                mensajesEnviados++;
+                for (UnCliente c : ServidorMulti.clientes.values()) {
+                    if (c == this) continue;
+                    if (ServidorMulti.db.estaBloqueado(c.nombre, this.nombre)) continue;
+                    c.enviar(nombre + ": " + msg);
                 }
-
-                
-                broadcastExcept(nombre + ": " + mensaje, this);
             }
-        } catch (IOException ex) {
-            
+        } catch (IOException e) {
+            System.err.println("Conexión cerrada: " + e.getMessage());
         } finally {
-         
-            try { entrada.close(); } catch (IOException ignored) {}
-            try { salida.close(); } catch (IOException ignored) {}
-            try { socket.close(); } catch (IOException ignored) {}
             ServidorMulti.clientes.remove(this.nombre);
-            broadcastSistema("El usuario '" + nombre + "' se ha desconectado.");
+            try { socket.close(); } catch (IOException ignore) {}
         }
     }
 
+    // --- Métodos de base de datos ---
+    private void registrar(String msg) {
+        String[] p = msg.split("\\s+");
+        if (p.length < 3) { enviarSistema("Uso: REGISTER <usuario> <pass>"); return; }
+
+        String user = p[1], pass = p[2];
+        if (db.usuarioExiste(user)) { enviarSistema("Ese usuario ya existe."); return; }
+
+        if (db.registrar(user, pass)) {
+            autenticado = true;
+            cambiarNombre(user);
+            enviarSistema("Registro exitoso. Ahora puedes escribir sin límite.");
+        } else {
+            enviarSistema("Error al registrar usuario.");
+        }
+    }
+
+    private void login(String msg) {
+        String[] p = msg.split("\\s+");
+        if (p.length < 3) { enviarSistema("Uso: LOGIN <usuario> <pass>"); return; }
+
+        String user = p[1], pass = p[2];
+        if (!db.usuarioExiste(user)) { enviarSistema("El usuario no existe."); return; }
+
+        if (db.verificarLogin(user, pass)) {
+            autenticado = true;
+            cambiarNombre(user);
+            enviarSistema("Inicio de sesión correcto.");
+        } else {
+            enviarSistema("Contraseña incorrecta.");
+        }
+    }
+
+    private void bloquear(String msg) {
+        String[] p = msg.split("\\s+");
+        if (p.length < 2) { enviarSistema("Uso: BLOCK <usuario>"); return; }
+
+        String objetivo = p[1];
+        if (objetivo.equals(nombre)) { enviarSistema("No puedes bloquearte a ti mismo."); return; }
+        if (!db.usuarioExiste(objetivo)) { enviarSistema("El usuario no existe."); return; }
+
+        if (db.bloquear(nombre, objetivo))
+            enviarSistema("Has bloqueado a '" + objetivo + "'.");
+        else
+            enviarSistema("Ya lo tenías bloqueado.");
+    }
+
+    private void desbloquear(String msg) {
+        String[] p = msg.split("\\s+");
+        if (p.length < 2) { enviarSistema("Uso: UNBLOCK <usuario>"); return; }
+
+        String objetivo = p[1];
+        if (db.desbloquear(nombre, objetivo))
+            enviarSistema("Has desbloqueado a '" + objetivo + "'.");
+        else
+            enviarSistema("Ese usuario no estaba bloqueado.");
+    }
+
+    private void listarBloqueos() {
+        Set<String> lista = db.listaBloqueados(nombre);
+        if (lista.isEmpty())
+            enviarSistema("No tienes usuarios bloqueados.");
+        else
+            enviarSistema("Usuarios bloqueados: " + String.join(", ", lista));
+    }
+
+    private void cambiarNombre(String nuevo) {
+        ServidorMulti.clientes.remove(this.nombre);
+        this.nombre = nuevo;
+        ServidorMulti.clientes.put(this.nombre, this);
+    }
+
+    // --- Utilidades ---
     void enviar(String msg) {
-        try { salida.writeUTF(msg); salida.flush(); } catch (IOException ignored) {}
+        try { salida.writeUTF(msg); } catch (IOException ignore) {}
     }
 
     void enviarSistema(String msg) {
-        enviar("[sistema] " + msg);
-    }
-
-    void broadcast(String msg) {
-        for (UnCliente c : ServidorMulti.clientes.values()) {
-            c.enviar(msg);
-        }
-    }
-
-
-    void broadcastExcept(String msg, UnCliente remitente) {
-        for (UnCliente c : ServidorMulti.clientes.values()) {
-            if (c != remitente) {
-                c.enviar(msg);
-            }
-        }
-    }
-
-
-    void broadcastSistemaExcept(String msg, UnCliente remitente) {
-        broadcastExcept("[sistema] " + msg, remitente);
-    }
-
-    void broadcastSistema(String msg) {
-        broadcast("[sistema] " + msg);
+        enviar(TAG_SYS + msg);
     }
 }

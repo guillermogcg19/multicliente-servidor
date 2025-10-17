@@ -19,16 +19,7 @@ public class ParaMandar implements Runnable {
     @Override
     public void run() {
         try {
-
-            System.out.print("Tu nombre: ");
-            String nombre = teclado.readLine();
-            if (nombre == null || nombre.isBlank()) {
-                nombre = "anon";
-            }
-            salida.writeUTF("NICK " + nombre.trim());
-            salida.flush();
-
-            System.out.println("Consejo: usa @destinatario mensaje para enviar privado. Escribe 'salir' para cerrar.");
+            System.out.println("Solo puedes enviar 3 mensajes en total. Después podrás ver los mensajes pero no escribir más.");
 
             while (true) {
                 String mensaje = teclado.readLine();

@@ -16,7 +16,6 @@ public class ClienteMulti {
             hiloParaMandar.start();
             hiloParaRecibir.start();
 
-     
             hiloParaMandar.join();
 
         } catch (Exception e) {
