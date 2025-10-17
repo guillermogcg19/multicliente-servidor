@@ -8,10 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ServidorMulti {
 
     static ConcurrentHashMap<String, UnCliente> clientes = new ConcurrentHashMap<>();
+    static Database db = new Database(); // base de datos
     static int contadorUsuarios = 1;
-
-    // Almacén de bloqueos (puede cambiarse a base de datos)
-    static BlockStore blocks = new InMemoryBlockStore();
 
     public static void main(String[] args) {
         int puerto = 8080;
@@ -23,7 +21,7 @@ public class ServidorMulti {
                 Socket socket = servidorSocket.accept();
 
                 String nombreTemporal = "usuario" + contadorUsuarios++;
-                UnCliente uncliente = new UnCliente(socket, nombreTemporal);
+                UnCliente uncliente = new UnCliente(socket, nombreTemporal, db);
                 Thread hilo = new Thread(uncliente, "cli-" + nombreTemporal);
 
                 clientes.put(nombreTemporal, uncliente);
@@ -33,7 +31,6 @@ public class ServidorMulti {
             }
         } catch (IOException e) {
             System.err.println("Error en servidor: " + e.getMessage());
-            e.printStackTrace(System.err);
         }
     }
 }
