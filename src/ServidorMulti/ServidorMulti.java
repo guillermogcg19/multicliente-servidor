@@ -1,36 +1,52 @@
-package servidormulti;
+package ServidorMulti;
 
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.SQLException;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ServidorMulti {
 
-    static ConcurrentHashMap<String, UnCliente> clientes = new ConcurrentHashMap<>();
-    static Database db = new Database(); // base de datos
-    static int contadorUsuarios = 1;
+    // Lista de clientes conectados
+    static final ConcurrentHashMap<String, UnCliente> clientes = new ConcurrentHashMap<>();
+
+    // Gestor de partidas del gato
+    static final GestorJuegos gestorJuegos = new GestorJuegos();
+
+    // Base de datos SQLite
+    static Database db;
+
+    // Contador de nombres temporales
+    private static int contador = 1;
 
     public static void main(String[] args) {
         int puerto = 8080;
 
-        try (ServerSocket servidorSocket = new ServerSocket(puerto)) {
+        try {
+            db = new Database("chat.db");
+            System.out.println("Base de datos inicializada correctamente.");
+        } catch (SQLException e) {
+            System.err.println("Error al iniciar base de datos: " + e.getMessage());
+            return;
+        }
+
+        try (ServerSocket servidor = new ServerSocket(puerto)) {
             System.out.println("Servidor iniciado en el puerto " + puerto);
 
             while (true) {
-                Socket socket = servidorSocket.accept();
+                Socket socket = servidor.accept();
 
-                String nombreTemporal = "usuario" + contadorUsuarios++;
-                UnCliente uncliente = new UnCliente(socket, nombreTemporal, db);
-                Thread hilo = new Thread(uncliente, "cli-" + nombreTemporal);
+                String nombreTemp = "usuario" + contador++;
+                UnCliente nuevoCliente = new UnCliente(socket, nombreTemp);
 
-                clientes.put(nombreTemporal, uncliente);
-                hilo.start();
+                clientes.put(nombreTemp, nuevoCliente);
+                new Thread(nuevoCliente).start();
 
-                System.out.println("Se conectó: " + nombreTemporal);
+                System.out.println("Cliente conectado: " + nombreTemp);
             }
         } catch (IOException e) {
-            System.err.println("Error en servidor: " + e.getMessage());
+            System.err.println("Error en el servidor: " + e.getMessage());
         }
     }
 }

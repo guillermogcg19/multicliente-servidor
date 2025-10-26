@@ -19,7 +19,8 @@ public class ParaMandar implements Runnable {
     @Override
     public void run() {
         try {
-            System.out.println("Solo puedes enviar 3 mensajes en total. Después podrás ver los mensajes pero no escribir más.");
+            System.out.println("Solo puedes enviar 3 mensajes en total. Después podrás ver los mensajes pero no escribir más."
+                    + "Comandos: REGISTER, LOGIN, CHALLENGE, ACCEPT, MOVE, RESIGN, GAMES, BLOCK, UNBLOCK, BLOCKS, salir\"");
 
             while (true) {
                 String mensaje = teclado.readLine();
