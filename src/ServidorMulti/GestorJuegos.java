@@ -1,33 +1,33 @@
 package ServidorMulti;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class GestorJuegos {
-    private final ConcurrentHashMap<String, Juego> juegos = new ConcurrentHashMap<>();
+    private final Map<String, SalaJuego> salas = new ConcurrentHashMap<>();
 
-    private String clave(String a, String b) {
-        return (a.compareTo(b) < 0) ? a + "|" + b : b + "|" + a;
+    public void crearSala(String a, String b) {
+        Juego j = new Juego(a, b);
+        SalaJuego s = new SalaJuego(a, b, j);
+        salas.put(a, s);
+        salas.put(b, s);
     }
 
-    public synchronized void crear(String a, String b) {
-        juegos.put(clave(a, b), new Juego(a, b));
+    public SalaJuego obtenerSala(String jugador) {
+        return salas.get(jugador);
     }
 
-    public synchronized boolean existe(String a, String b) {
-        return juegos.containsKey(clave(a, b));
+    public boolean existeSala(String a, String b) {
+        SalaJuego sA = salas.get(a);
+        return sA != null && sA.contiene(b);
     }
 
-    public synchronized Juego obtener(String a, String b) {
-        return juegos.get(clave(a, b));
+    public void eliminarSala(String a, String b) {
+        salas.remove(a);
+        salas.remove(b);
     }
 
-    public synchronized void eliminar(String a, String b) {
-        juegos.remove(clave(a, b));
-    }
-
-    public synchronized List<Juego> todos() {
-        return new ArrayList<>(juegos.values());
+    public Iterable<SalaJuego> todas() {
+        return salas.values();
     }
 }
