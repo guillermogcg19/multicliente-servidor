@@ -27,7 +27,7 @@ public class UnCliente implements Runnable {
 
         enviar(TAG_SYS + "Eres " + nombre + ". Solo puedes enviar " + LIMITE + " mensajes sin registrarte.");
         enviar(TAG_SYS + "Comandos: REGISTER <user> <pass>, LOGIN <user> <pass>, BLOCK <user>, UNBLOCK <user>, BLOCKS");
-        enviar(TAG_SYS + "Juego: JUGAR <user>, ACEPTAR <user>, MOVER <1-9>, TABLERO, RENDIRSE, PARTIDAS, AYUDA");
+        enviar(TAG_SYS + "Juego: JUGAR <user>, ACEPTAR <user>, MOVER <1-9>, TABLERO, RENDIRSE, RANKING, RANK <a> <b>");
     }
 
     @Override
@@ -36,7 +36,7 @@ public class UnCliente implements Runnable {
             while (true) {
                 String msg = entrada.readUTF();
                 if (msg == null) break;
-                procesarMensaje(msg.trim());
+                procesar(msg.trim());
             }
         } catch (IOException e) {
             System.err.println("Conexion cerrada: " + e.getMessage());
@@ -45,7 +45,7 @@ public class UnCliente implements Runnable {
         }
     }
 
-    private void procesarMensaje(String msg) {
+    private void procesar(String msg) {
         String m = msg.toUpperCase();
 
         if (m.startsWith("REGISTER ")) { registrar(msg); return; }
@@ -57,13 +57,16 @@ public class UnCliente implements Runnable {
         if (m.startsWith("JUGAR ")) { jugar(msg); return; }
         if (m.startsWith("ACEPTAR ")) { aceptar(msg); return; }
         if (m.startsWith("MOVER ")) { mover(msg); return; }
-        if (m.equals("TABLERO")) { mostrarTablero(); return; }
+        if (m.equals("TABLERO")) { tablero(); return; }
         if (m.equals("RENDIRSE")) { rendirse(); return; }
+
+        if (m.equals("RANKING")) { enviar(TAG_SYS + db.obtenerRankingGeneral()); return; }
+        if (m.startsWith("RANK ")) { rankDos(msg); return; }
 
         SalaJuego sala = ServidorMulti.gestorJuegos.obtenerSala(nombre);
         if (sala != null) {
-            UnCliente oponente = ServidorMulti.clientes.get(sala.getOponente(nombre));
-            if (oponente != null) oponente.enviar("[privado][" + nombre + "]: " + msg);
+            UnCliente op = ServidorMulti.clientes.get(sala.getOponente(nombre));
+            if (op != null) op.enviar("[privado][" + nombre + "]: " + msg);
             return;
         }
 
@@ -73,10 +76,10 @@ public class UnCliente implements Runnable {
         }
 
         mensajes++;
-        for (UnCliente cli : ServidorMulti.clientes.values()) {
-            if (cli == this) continue;
-            if (ServidorMulti.db.estaBloqueado(cli.nombre, nombre)) continue;
-            cli.enviar(nombre + ": " + msg);
+        for (UnCliente c : ServidorMulti.clientes.values()) {
+            if (c == this) continue;
+            if (ServidorMulti.db.estaBloqueado(c.nombre, nombre)) continue;
+            c.enviar(nombre + ": " + msg);
         }
     }
 
@@ -85,11 +88,8 @@ public class UnCliente implements Runnable {
         if (p.length < 3) { enviar(TAG_SYS + "Uso: REGISTER <user> <pass>"); return; }
         String u = p[1], pass = p[2];
         if (db.existeUsuario(u)) { enviar(TAG_SYS + "Ese usuario ya existe."); return; }
-        if (db.registrar(u, pass)) {
-            autenticado = true;
-            cambiarNombre(u);
-            enviar(TAG_SYS + "Registro exitoso.");
-        } else enviar(TAG_SYS + "Error al registrar.");
+        if (db.registrar(u, pass)) { autenticado = true; cambiarNombre(u); enviar(TAG_SYS + "Registro ok."); }
+        else enviar(TAG_SYS + "Error registrar.");
     }
 
     private void login(String msg) {
@@ -98,11 +98,8 @@ public class UnCliente implements Runnable {
         String u = p[1], pass = p[2];
         if (!db.existeUsuario(u)) { enviar(TAG_SYS + "Usuario no existe."); return; }
         if (ServidorMulti.clientes.containsKey(u)) { enviar(TAG_SYS + "Usuario ya conectado."); return; }
-        if (db.login(u, pass)) {
-            autenticado = true;
-            cambiarNombre(u);
-            enviar(TAG_SYS + "Inicio de sesion correcto.");
-        } else enviar(TAG_SYS + "Contrasena incorrecta.");
+        if (db.login(u, pass)) { autenticado = true; cambiarNombre(u); enviar(TAG_SYS + "Login ok."); }
+        else enviar(TAG_SYS + "Password incorrecto.");
     }
 
     private void jugar(String msg) {
@@ -112,8 +109,7 @@ public class UnCliente implements Runnable {
         if (otro.equals(nombre)) { enviar(TAG_SYS + "No puedes jugar contigo mismo."); return; }
         if (!db.existeUsuario(otro)) { enviar(TAG_SYS + "Usuario no existe."); return; }
         if (!ServidorMulti.clientes.containsKey(otro)) { enviar(TAG_SYS + "Usuario no conectado."); return; }
-        if (ServidorMulti.gestorJuegos.existeSala(nombre, otro)) { enviar(TAG_SYS + "Ya hay una partida con ese usuario."); return; }
-
+        if (ServidorMulti.gestorJuegos.existeSala(nombre, otro)) { enviar(TAG_SYS + "Ya hay partida con ese usuario."); return; }
         ServidorMulti.gestorJuegos.crearSala(nombre, otro);
         UnCliente cli = ServidorMulti.clientes.get(otro);
         cli.enviar(TAG_GAME + nombre + " te invito a jugar. Usa ACEPTAR " + nombre);
@@ -124,10 +120,9 @@ public class UnCliente implements Runnable {
         String[] p = msg.split("\\s+");
         if (p.length < 2) { enviar(TAG_SYS + "Uso: ACEPTAR <user>"); return; }
         String otro = p[1];
-        SalaJuego sala = ServidorMulti.gestorJuegos.obtenerSala(nombre);
-        if (sala == null || !sala.contiene(otro)) { enviar(TAG_SYS + "No hay invitacion."); return; }
-
-        Juego j = sala.getJuego();
+        SalaJuego s = ServidorMulti.gestorJuegos.obtenerSala(nombre);
+        if (s == null || !s.contiene(otro)) { enviar(TAG_SYS + "No hay invitacion."); return; }
+        Juego j = s.getJuego();
         UnCliente cli = ServidorMulti.clientes.get(otro);
         enviar(TAG_GAME + "Partida iniciada. Empieza: " + j.getTurno());
         cli.enviar(TAG_GAME + "Partida iniciada. Empieza: " + j.getTurno());
@@ -140,19 +135,17 @@ public class UnCliente implements Runnable {
         if (p.length < 2) { enviar(TAG_SYS + "Uso: MOVER <1-9>"); return; }
         int pos;
         try { pos = Integer.parseInt(p[1]); } catch (NumberFormatException e) { enviar(TAG_SYS + "Posicion invalida."); return; }
-        SalaJuego sala = ServidorMulti.gestorJuegos.obtenerSala(nombre);
-        if (sala == null) { enviar(TAG_SYS + "No tienes partida activa."); return; }
-
-        Juego j = sala.getJuego();
-        String res = j.realizarMovimiento(nombre, pos);
-        UnCliente cli = ServidorMulti.clientes.get(sala.getOponente(nombre));
-        enviar(TAG_GAME + res);
-        if (cli != null) cli.enviar(TAG_GAME + res);
-
-        if (j.estaTerminado()) ServidorMulti.gestorJuegos.eliminarSala(nombre, sala.getOponente(nombre));
+        SalaJuego s = ServidorMulti.gestorJuegos.obtenerSala(nombre);
+        if (s == null) { enviar(TAG_SYS + "No tienes partida activa."); return; }
+        Juego j = s.getJuego();
+        String r = j.realizarMovimiento(nombre, pos);
+        UnCliente op = ServidorMulti.clientes.get(s.getOponente(nombre));
+        enviar(TAG_GAME + r);
+        if (op != null) op.enviar(TAG_GAME + r);
+        if (j.estaTerminado()) ServidorMulti.gestorJuegos.eliminarSala(nombre, s.getOponente(nombre));
     }
 
-    private void mostrarTablero() {
+    private void tablero() {
         SalaJuego s = ServidorMulti.gestorJuegos.obtenerSala(nombre);
         if (s == null) { enviar(TAG_SYS + "No hay partida activa."); return; }
         enviar(TAG_GAME + s.getJuego().mostrarTablero());
@@ -162,34 +155,40 @@ public class UnCliente implements Runnable {
         SalaJuego s = ServidorMulti.gestorJuegos.obtenerSala(nombre);
         if (s == null) { enviar(TAG_SYS + "No tienes partida activa."); return; }
         s.getJuego().rendirse(nombre);
-        UnCliente cli = ServidorMulti.clientes.get(s.getOponente(nombre));
-        if (cli != null) cli.enviar(TAG_GAME + "Tu oponente se rindio. Ganaste.");
+        UnCliente op = ServidorMulti.clientes.get(s.getOponente(nombre));
+        if (op != null) op.enviar(TAG_GAME + "Tu oponente se rindio. Ganaste.");
         enviar(TAG_GAME + "Te rendiste.");
         ServidorMulti.gestorJuegos.eliminarSala(nombre, s.getOponente(nombre));
+    }
+
+    private void rankDos(String msg) {
+        String[] p = msg.split("\\s+");
+        if (p.length < 3) { enviar(TAG_SYS + "Uso: RANK <user1> <user2>"); return; }
+        enviar(TAG_SYS + db.compararHeadToHead(p[1], p[2]));
     }
 
     private void bloquear(String msg) {
         String[] p = msg.split("\\s+");
         if (p.length < 2) { enviar(TAG_SYS + "Uso: BLOCK <user>"); return; }
-        String objetivo = p[1];
-        if (objetivo.equals(nombre)) { enviar(TAG_SYS + "No puedes bloquearte a ti mismo."); return; }
-        if (!db.existeUsuario(objetivo)) { enviar(TAG_SYS + "Usuario no existe."); return; }
-        if (db.bloquear(nombre, objetivo)) enviar(TAG_SYS + "Has bloqueado a " + objetivo);
-        else enviar(TAG_SYS + "Ese usuario ya estaba bloqueado.");
+        String obj = p[1];
+        if (obj.equals(nombre)) { enviar(TAG_SYS + "No puedes bloquearte."); return; }
+        if (!db.existeUsuario(obj)) { enviar(TAG_SYS + "Usuario no existe."); return; }
+        if (db.bloquear(nombre, obj)) enviar(TAG_SYS + "Has bloqueado a " + obj);
+        else enviar(TAG_SYS + "Ya estaba bloqueado.");
     }
 
     private void desbloquear(String msg) {
         String[] p = msg.split("\\s+");
         if (p.length < 2) { enviar(TAG_SYS + "Uso: UNBLOCK <user>"); return; }
-        String objetivo = p[1];
-        if (db.desbloquear(nombre, objetivo)) enviar(TAG_SYS + "Has desbloqueado a " + objetivo);
-        else enviar(TAG_SYS + "Ese usuario no estaba bloqueado.");
+        String obj = p[1];
+        if (db.desbloquear(nombre, obj)) enviar(TAG_SYS + "Has desbloqueado a " + obj);
+        else enviar(TAG_SYS + "No estaba bloqueado.");
     }
 
     private void listarBloqueos() {
-        Set<String> lista = db.obtenerBloqueados(nombre);
-        if (lista.isEmpty()) enviar(TAG_SYS + "No tienes usuarios bloqueados.");
-        else enviar(TAG_SYS + "Bloqueados: " + String.join(", ", lista));
+        Set<String> s = db.obtenerBloqueados(nombre);
+        if (s.isEmpty()) enviar(TAG_SYS + "Sin bloqueos.");
+        else enviar(TAG_SYS + "Bloqueados: " + String.join(", ", s));
     }
 
     private void cambiarNombre(String nuevo) {
@@ -202,10 +201,11 @@ public class UnCliente implements Runnable {
         ServidorMulti.clientes.remove(nombre);
         SalaJuego s = ServidorMulti.gestorJuegos.obtenerSala(nombre);
         if (s != null) {
-            String oponente = s.getOponente(nombre);
-            UnCliente cli = ServidorMulti.clientes.get(oponente);
+            String op = s.getOponente(nombre);
+            s.getJuego().rendirse(nombre);
+            UnCliente cli = ServidorMulti.clientes.get(op);
             if (cli != null) cli.enviar(TAG_GAME + "Tu oponente se desconecto. Ganaste por abandono.");
-            ServidorMulti.gestorJuegos.eliminarSala(nombre, oponente);
+            ServidorMulti.gestorJuegos.eliminarSala(nombre, op);
         }
         try { socket.close(); } catch (IOException ignore) {}
     }

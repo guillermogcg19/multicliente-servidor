@@ -11,15 +11,7 @@ public class SalaJuego {
         this.juego = j;
     }
 
-    public boolean contiene(String nombre) {
-        return jugadorA.equals(nombre) || jugadorB.equals(nombre);
-    }
-
-    public String getOponente(String nombre) {
-        return jugadorA.equals(nombre) ? jugadorB : jugadorA;
-    }
-
-    public Juego getJuego() {
-        return juego;
-    }
+    public boolean contiene(String nombre) { return jugadorA.equals(nombre) || jugadorB.equals(nombre); }
+    public String getOponente(String nombre) { return jugadorA.equals(nombre) ? jugadorB : jugadorA; }
+    public Juego getJuego() { return juego; }
 }

@@ -13,21 +13,15 @@ public class GestorJuegos {
         salas.put(b, s);
     }
 
-    public SalaJuego obtenerSala(String jugador) {
-        return salas.get(jugador);
-    }
+    public SalaJuego obtenerSala(String jugador) { return salas.get(jugador); }
 
     public boolean existeSala(String a, String b) {
-        SalaJuego sA = salas.get(a);
-        return sA != null && sA.contiene(b);
+        SalaJuego s = salas.get(a);
+        return s != null && s.contiene(b);
     }
 
     public void eliminarSala(String a, String b) {
         salas.remove(a);
         salas.remove(b);
-    }
-
-    public Iterable<SalaJuego> todas() {
-        return salas.values();
     }
 }
