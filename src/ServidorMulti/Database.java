@@ -1,211 +1,234 @@
 package ServidorMulti;
 
 import java.sql.*;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 public class Database {
     private final Connection conn;
 
-    public Database(String ruta) throws SQLException {
-        this.conn = DriverManager.getConnection("jdbc:sqlite:" + ruta);
-        try (Statement st = conn.createStatement()) {
-            st.execute("PRAGMA journal_mode=WAL");
-        }
-        inicializar();
+    public Database(String archivo) throws SQLException {
+        conn = DriverManager.getConnection("jdbc:sqlite:" + archivo);
+        inicializarRanking();
+        inicializarGrupos();
     }
 
-    private void inicializar() throws SQLException {
-        try (Statement st = conn.createStatement()) {
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS usuarios(
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  nombre TEXT UNIQUE NOT NULL,
-                  pass TEXT NOT NULL
-                )
-            """);
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS bloqueos(
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  bloqueador TEXT NOT NULL,
-                  bloqueado TEXT NOT NULL,
-                  UNIQUE(bloqueador,bloqueado)
-                )
-            """);
-        }
-    }
+    // ------------------ RANKING ------------------
 
     public void inicializarRanking() throws SQLException {
         try (Statement st = conn.createStatement()) {
-            st.execute("""
-              CREATE TABLE IF NOT EXISTS ranking(
-                usuario TEXT PRIMARY KEY,
-                puntos INTEGER DEFAULT 0,
-                victorias INTEGER DEFAULT 0,
-                empates INTEGER DEFAULT 0,
-                derrotas INTEGER DEFAULT 0
-              )
-            """);
-            st.execute("""
-              CREATE TABLE IF NOT EXISTS duelos(
-                a TEXT NOT NULL,
-                b TEXT NOT NULL,
-                victorias_a INTEGER DEFAULT 0,
-                victorias_b INTEGER DEFAULT 0,
-                empates INTEGER DEFAULT 0,
-                PRIMARY KEY(a,b)
-              )
-            """);
+            st.execute("CREATE TABLE IF NOT EXISTS ranking (" +
+                       "usuario TEXT PRIMARY KEY, " +
+                       "puntos INTEGER DEFAULT 0, " +
+                       "victorias INTEGER DEFAULT 0, " +
+                       "empates INTEGER DEFAULT 0, " +
+                       "derrotas INTEGER DEFAULT 0)");
         }
-    }
-
-    public boolean registrar(String u, String p) {
-        try (PreparedStatement ps = conn.prepareStatement("INSERT INTO usuarios(nombre,pass) VALUES(?,?)")) {
-            ps.setString(1, u); ps.setString(2, p); ps.executeUpdate(); return true;
-        } catch (SQLException e) { return false; }
-    }
-
-    public boolean login(String u, String p) {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM usuarios WHERE nombre=? AND pass=?")) {
-            ps.setString(1, u); ps.setString(2, p);
-            try (ResultSet rs = ps.executeQuery()) { return rs.next(); }
-        } catch (SQLException e) { return false; }
-    }
-
-    public boolean existeUsuario(String u) {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM usuarios WHERE nombre=?")) {
-            ps.setString(1, u);
-            try (ResultSet rs = ps.executeQuery()) { return rs.next(); }
-        } catch (SQLException e) { return false; }
-    }
-
-    public boolean bloquear(String de, String a) {
-        try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO bloqueos(bloqueador,bloqueado) VALUES(?,?)")) {
-            ps.setString(1, de); ps.setString(2, a); return ps.executeUpdate() > 0;
-        } catch (SQLException e) { return false; }
-    }
-
-    public boolean desbloquear(String de, String a) {
-        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM bloqueos WHERE bloqueador=? AND bloqueado=?")) {
-            ps.setString(1, de); ps.setString(2, a); return ps.executeUpdate() > 0;
-        } catch (SQLException e) { return false; }
-    }
-
-    public boolean estaBloqueado(String receptor, String emisor) {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM bloqueos WHERE bloqueador=? AND bloqueado=?")) {
-            ps.setString(1, receptor); ps.setString(2, emisor);
-            try (ResultSet rs = ps.executeQuery()) { return rs.next(); }
-        } catch (SQLException e) { return false; }
-    }
-
-    public Set<String> obtenerBloqueados(String de) {
-        Set<String> out = new HashSet<>();
-        try (PreparedStatement ps = conn.prepareStatement("SELECT bloqueado FROM bloqueos WHERE bloqueador=?")) {
-            ps.setString(1, de);
-            try (ResultSet rs = ps.executeQuery()) { while (rs.next()) out.add(rs.getString(1)); }
-        } catch (SQLException e) {}
-        return out;
     }
 
     public void actualizarResultadoVictoria(String ganador, String perdedor) {
         try {
-            sumarRanking(ganador, 2, "victorias");
-            sumarRanking(perdedor, 0, "derrotas");
-            sumarDuelosVictoria(ganador, perdedor);
-        } catch (SQLException e) {
-            System.err.println("ranking win error: " + e.getMessage());
+            PreparedStatement ps1 = conn.prepareStatement(
+                "INSERT INTO ranking(usuario, puntos, victorias, empates, derrotas) VALUES(?,2,1,0,0) " +
+                "ON CONFLICT(usuario) DO UPDATE SET puntos=puntos+2, victorias=victorias+1"
+            );
+            ps1.setString(1, ganador);
+            ps1.executeUpdate();
+
+            PreparedStatement ps2 = conn.prepareStatement(
+                "INSERT INTO ranking(usuario, puntos, victorias, empates, derrotas) VALUES(?,0,0,0,1) " +
+                "ON CONFLICT(usuario) DO UPDATE SET derrotas=derrotas+1"
+            );
+            ps2.setString(1, perdedor);
+            ps2.executeUpdate();
+
+            ps1.close();
+            ps2.close();
+        } catch (Exception e) {
+            System.err.println("Error al actualizar victoria: " + e.getMessage());
         }
     }
 
-    public void actualizarResultadoEmpate(String a, String b) {
+    public void actualizarResultadoEmpate(String jugadorA, String jugadorB) {
         try {
-            sumarRanking(a, 1, "empates");
-            sumarRanking(b, 1, "empates");
-            sumarDuelosEmpate(a, b);
-        } catch (SQLException e) {
-            System.err.println("ranking draw error: " + e.getMessage());
+            PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO ranking(usuario, puntos, victorias, empates, derrotas) VALUES(?,1,0,1,0) " +
+                "ON CONFLICT(usuario) DO UPDATE SET puntos=puntos+1, empates=empates+1"
+            );
+            ps.setString(1, jugadorA);
+            ps.executeUpdate();
+            ps.setString(1, jugadorB);
+            ps.executeUpdate();
+            ps.close();
+        } catch (Exception e) {
+            System.err.println("Error al actualizar empate: " + e.getMessage());
         }
     }
 
-    private void sumarRanking(String u, int pts, String campo) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement("""
-            INSERT INTO ranking(usuario,puntos,victorias,empates,derrotas)
-            VALUES(?,0,0,0,0)
-            ON CONFLICT(usuario) DO NOTHING
-        """)) {
-            ps.setString(1, u); ps.executeUpdate();
-        }
+    public void mostrarRankingGeneral(UnCliente cli) {
         try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE ranking SET puntos=puntos+?, "+campo+"="+campo+"+1 WHERE usuario=?")) {
-            ps.setInt(1, pts); ps.setString(2, u); ps.executeUpdate();
-        }
-    }
-
-    private void ensureDuelos(String x, String y) throws SQLException {
-        String a = x.compareTo(y) <= 0 ? x : y;
-        String b = x.compareTo(y) <= 0 ? y : x;
-        try (PreparedStatement ps = conn.prepareStatement("""
-            INSERT INTO duelos(a,b,victorias_a,victorias_b,empates)
-            VALUES(?,?,0,0,0)
-            ON CONFLICT(a,b) DO NOTHING
-        """)) {
-            ps.setString(1, a); ps.setString(2, b); ps.executeUpdate();
-        }
-    }
-
-    private void sumarDuelosVictoria(String winner, String loser) throws SQLException {
-        ensureDuelos(winner, loser);
-        boolean winnerIsA = winner.compareTo(loser) <= 0;
-        String sql = winnerIsA ?
-            "UPDATE duelos SET victorias_a = victorias_a + 1 WHERE a=? AND b=?" :
-            "UPDATE duelos SET victorias_b = victorias_b + 1 WHERE a=? AND b=?";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            String a = winner.compareTo(loser) <= 0 ? winner : loser;
-            String b = winner.compareTo(loser) <= 0 ? loser : winner;
-            ps.setString(1, a); ps.setString(2, b); ps.executeUpdate();
-        }
-    }
-
-    private void sumarDuelosEmpate(String x, String y) throws SQLException {
-        ensureDuelos(x, y);
-        String a = x.compareTo(y) <= 0 ? x : y;
-        String b = x.compareTo(y) <= 0 ? y : x;
-        try (PreparedStatement ps = conn.prepareStatement("UPDATE duelos SET empates=empates+1 WHERE a=? AND b=?")) {
-            ps.setString(1, a); ps.setString(2, b); ps.executeUpdate();
-        }
-    }
-
-    public String obtenerRankingGeneral() {
-        StringBuilder sb = new StringBuilder("Ranking:\n");
-        try (Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT usuario,puntos,victorias,empates,derrotas FROM ranking ORDER BY puntos DESC, victorias DESC, usuario ASC")) {
-            int pos = 1;
+            "SELECT usuario, puntos, victorias, empates, derrotas FROM ranking ORDER BY puntos DESC"
+        )) {
+            ResultSet rs = ps.executeQuery();
+            StringBuilder sb = new StringBuilder();
+            sb.append("[ranking] Tabla general:\n");
             while (rs.next()) {
-                sb.append(pos++).append(". ")
-                  .append(rs.getString(1)).append(" - ")
-                  .append(rs.getInt(2)).append(" pts (")
-                  .append(rs.getInt(3)).append("V ")
-                  .append(rs.getInt(4)).append("E ")
-                  .append(rs.getInt(5)).append("D)\n");
+                sb.append(rs.getString("usuario")).append(" -> ")
+                  .append("Pts: ").append(rs.getInt("puntos")).append(" | ")
+                  .append("V: ").append(rs.getInt("victorias")).append(" | ")
+                  .append("E: ").append(rs.getInt("empates")).append(" | ")
+                  .append("D: ").append(rs.getInt("derrotas")).append("\n");
             }
-        } catch (SQLException e) { return "Error ranking."; }
-        return sb.toString();
+            cli.enviar(sb.toString());
+        } catch (Exception e) {
+            cli.enviar("[ranking] Error al obtener el ranking general.");
+        }
     }
 
-    public String compararHeadToHead(String x, String y) {
-        String a = x.compareTo(y) <= 0 ? x : y;
-        String b = x.compareTo(y) <= 0 ? y : x;
-        try (PreparedStatement ps = conn.prepareStatement("SELECT victorias_a,victorias_b,empates FROM duelos WHERE a=? AND b=?")) {
-            ps.setString(1, a); ps.setString(2, b);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return "Sin enfrentamientos entre " + x + " y " + y;
-                int va = rs.getInt(1), vb = rs.getInt(2), e = rs.getInt(3);
-                int total = va + vb + e;
-                if (total == 0) return "Sin enfrentamientos entre " + x + " y " + y;
-                double px = (x.equals(a) ? va : vb) * 100.0 / total;
-                double py = (y.equals(b) ? vb : va) * 100.0 / total;
-                return x + ": " + String.format("%.1f", px) + "% | " + y + ": " + String.format("%.1f", py) + "%  (" + total + " juegos)";
+    public void mostrarComparacion(UnCliente cli, String j1, String j2) {
+        try {
+            PreparedStatement ps = conn.prepareStatement(
+                "SELECT usuario, victorias, empates, derrotas FROM ranking WHERE usuario IN (?, ?)"
+            );
+            ps.setString(1, j1);
+            ps.setString(2, j2);
+            ResultSet rs = ps.executeQuery();
+
+            Map<String, int[]> datos = new HashMap<>();
+            while (rs.next()) {
+                datos.put(rs.getString("usuario"),
+                          new int[]{rs.getInt("victorias"), rs.getInt("empates"), rs.getInt("derrotas")});
             }
-        } catch (SQLException e) { return "Error comparacion."; }
+
+            if (!datos.containsKey(j1) || !datos.containsKey(j2)) {
+                cli.enviar("[ranking] Uno o ambos jugadores no tienen partidas registradas.");
+                return;
+            }
+
+            int total1 = Arrays.stream(datos.get(j1)).sum();
+            int total2 = Arrays.stream(datos.get(j2)).sum();
+            if (total1 == 0 && total2 == 0) {
+                cli.enviar("[ranking] No hay suficientes datos para comparar.");
+                return;
+            }
+
+            double win1 = total1 > 0 ? (datos.get(j1)[0] * 100.0 / total1) : 0;
+            double win2 = total2 > 0 ? (datos.get(j2)[0] * 100.0 / total2) : 0;
+
+            cli.enviar("[ranking] Comparacion entre " + j1 + " y " + j2 + ":");
+            cli.enviar(j1 + " -> " + String.format("%.1f", win1) + "% victorias");
+            cli.enviar(j2 + " -> " + String.format("%.1f", win2) + "% victorias");
+        } catch (Exception e) {
+            cli.enviar("[ranking] Error al comparar jugadores.");
+        }
+    }
+
+    // ------------------ GRUPOS ------------------
+
+    public void inicializarGrupos() throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            st.execute("CREATE TABLE IF NOT EXISTS grupos (nombre TEXT PRIMARY KEY)");
+            st.execute("CREATE TABLE IF NOT EXISTS grupo_miembros (grupo TEXT, usuario TEXT, ultimo_id INTEGER DEFAULT 0)");
+            st.execute("CREATE TABLE IF NOT EXISTS mensajes (id INTEGER PRIMARY KEY AUTOINCREMENT, grupo TEXT, usuario TEXT, texto TEXT, fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+            st.execute("INSERT OR IGNORE INTO grupos(nombre) VALUES ('Todos')");
+        }
+    }
+
+    public boolean crearGrupo(String grupo) {
+        try (PreparedStatement ps = conn.prepareStatement("INSERT INTO grupos(nombre) VALUES (?)")) {
+            ps.setString(1, grupo);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    public boolean borrarGrupo(String grupo) {
+        if (grupo.equalsIgnoreCase("Todos")) return false;
+        try {
+            PreparedStatement ps = conn.prepareStatement("DELETE FROM grupos WHERE nombre=?");
+            ps.setString(1, grupo);
+            ps.executeUpdate();
+            ps.close();
+
+            conn.prepareStatement("DELETE FROM grupo_miembros WHERE grupo='" + grupo + "'").executeUpdate();
+            conn.prepareStatement("DELETE FROM mensajes WHERE grupo='" + grupo + "'").executeUpdate();
+
+            return true;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    public boolean unirseAGrupo(String grupo, String usuario) {
+        try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO grupo_miembros(grupo,usuario) VALUES(?,?)")) {
+            ps.setString(1, grupo);
+            ps.setString(2, usuario);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    public boolean salirDeGrupo(String grupo, String usuario) {
+        if (grupo.equalsIgnoreCase("Todos")) return false;
+        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM grupo_miembros WHERE grupo=? AND usuario=?")) {
+            ps.setString(1, grupo);
+            ps.setString(2, usuario);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    public List<String> gruposDeUsuario(String usuario) {
+        List<String> lista = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement("SELECT grupo FROM grupo_miembros WHERE usuario=?")) {
+            ps.setString(1, usuario);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) lista.add(rs.getString(1));
+        } catch (SQLException ignore) {}
+        return lista;
+    }
+
+    public void guardarMensaje(String grupo, String usuario, String texto) {
+        try (PreparedStatement ps = conn.prepareStatement("INSERT INTO mensajes(grupo,usuario,texto) VALUES(?,?,?)")) {
+            ps.setString(1, grupo);
+            ps.setString(2, usuario);
+            ps.setString(3, texto);
+            ps.executeUpdate();
+        } catch (SQLException ignore) {}
+    }
+
+    public List<String> mensajesNoLeidos(String grupo, String usuario) {
+        List<String> mensajes = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+            "SELECT m.id, m.usuario, m.texto FROM mensajes m " +
+            "JOIN grupo_miembros gm ON m.grupo=gm.grupo " +
+            "WHERE gm.usuario=? AND m.grupo=? AND m.id > gm.ultimo_id ORDER BY m.id"
+        )) {
+            ps.setString(1, usuario);
+            ps.setString(2, grupo);
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                mensajes.add(rs.getString("usuario") + ": " + rs.getString("texto"));
+            }
+
+            if (!mensajes.isEmpty()) {
+                try (PreparedStatement upd = conn.prepareStatement(
+                    "UPDATE grupo_miembros SET ultimo_id=(SELECT MAX(id) FROM mensajes WHERE grupo=?) " +
+                    "WHERE grupo=? AND usuario=?"
+                )) {
+                    upd.setString(1, grupo);
+                    upd.setString(2, grupo);
+                    upd.setString(3, usuario);
+                    upd.executeUpdate();
+                }
+            }
+        } catch (SQLException ignore) {}
+        return mensajes;
     }
 }
