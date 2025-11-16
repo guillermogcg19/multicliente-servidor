@@ -7,20 +7,22 @@ public class Juego {
     private final String jugadorB;
     private final char[] tablero = {'1','2','3','4','5','6','7','8','9'};
     private String turno;
-    private boolean terminado;
+    private boolean terminado = false;
 
     public Juego(String a, String b) {
         this.jugadorA = a;
         this.jugadorB = b;
         this.turno = new Random().nextBoolean() ? a : b;
-        this.terminado = false;
     }
 
     public String getJugadorA() { return jugadorA; }
     public String getJugadorB() { return jugadorB; }
-    public String getTurno() { return turno; }
+    public String getTurno()    { return turno; }
     public boolean estaTerminado() { return terminado; }
-    public String getOponente(String j) { return j.equals(jugadorA) ? jugadorB : jugadorA; }
+
+    public String getOponente(String j) {
+        return j.equals(jugadorA) ? jugadorB : jugadorA;
+    }
 
     public String mostrarTablero() {
         return tablero[0] + " | " + tablero[1] + " | " + tablero[2] + "\n" +
@@ -61,19 +63,23 @@ public class Juego {
     }
 
     private boolean lleno() {
-        for (char c : tablero) if (c != 'X' && c != 'O') return false;
+        for (char c : tablero) {
+            if (c != 'X' && c != 'O') return false;
+        }
         return true;
     }
 
     private boolean gana(char s) {
         int[][] w = {
-            {0,1,2}, {3,4,5}, {6,7,8},
-            {0,3,6}, {1,4,7}, {2,5,8},
-            {0,4,8}, {2,4,6}
+            {0,1,2},{3,4,5},{6,7,8},
+            {0,3,6},{1,4,7},{2,5,8},
+            {0,4,8},{2,4,6}
         };
-        for (int[] c : w)
-            if (tablero[c[0]] == s && tablero[c[1]] == s && tablero[c[2]] == s)
+        for (int[] c : w) {
+            if (tablero[c[0]] == s && tablero[c[1]] == s && tablero[c[2]] == s) {
                 return true;
+            }
+        }
         return false;
     }
 }

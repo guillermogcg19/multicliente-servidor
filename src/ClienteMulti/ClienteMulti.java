@@ -8,7 +8,7 @@ public class ClienteMulti {
     public static void main(String[] args) {
         Socket s = null;
         try {
-            s = new Socket("localhost", 8080);
+            s = new Socket("10.22.14.84", 8080);
 
             Thread hiloParaMandar = new Thread(new ParaMandar(s), "sender");
             Thread hiloParaRecibir = new Thread(new ParaRecibir(s), "receiver");

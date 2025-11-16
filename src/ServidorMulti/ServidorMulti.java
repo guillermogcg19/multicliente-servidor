@@ -9,9 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ServidorMulti {
     static ConcurrentHashMap<String, UnCliente> clientes = new ConcurrentHashMap<>();
     static GestorJuegos gestorJuegos = new GestorJuegos();
-    static GestorGrupos gestorGrupos = new GestorGrupos();
     static Database db;
-    static int contador = 1;
+    private static int contador = 1;
 
     public static void main(String[] args) {
         int puerto = 8080;
@@ -26,12 +25,10 @@ public class ServidorMulti {
             System.out.println("Servidor iniciado en puerto " + puerto);
             while (true) {
                 Socket s = servidor.accept();
-                String nombre = "usuario" + contador++;
+                String nombre = "user" + contador++;
                 UnCliente cli = new UnCliente(s, nombre);
                 clientes.put(nombre, cli);
-                gestorGrupos.unirA("Todos", nombre);
                 new Thread(cli).start();
-                System.out.println("Conectado: " + nombre);
             }
         } catch (IOException e) {
             System.err.println("Error en servidor: " + e.getMessage());
