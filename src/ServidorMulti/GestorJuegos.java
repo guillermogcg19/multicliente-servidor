@@ -4,27 +4,27 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class GestorJuegos {
+
     private final Map<String, SalaJuego> salas = new ConcurrentHashMap<>();
 
-    public synchronized void crearSala(String a, String b) {
-        if (existeSala(a, b)) return;
-        Juego j = new Juego(a, b);
-        SalaJuego s = new SalaJuego(a, b, j);
-        salas.put(a, s);
-        salas.put(b, s);
+    public void crearSala(String jugadorA, String jugadorB) {
+        Juego juego = new Juego(jugadorA, jugadorB);
+        SalaJuego sala = new SalaJuego(jugadorA, jugadorB, juego);
+        salas.put(jugadorA, sala);
+        salas.put(jugadorB, sala);
     }
 
-    public synchronized boolean existeSala(String a, String b) {
-        SalaJuego s = salas.get(a);
-        return s != null && s.contiene(b);
-    }
-
-    public synchronized SalaJuego obtenerSala(String jugador) {
+    public SalaJuego obtenerSala(String jugador) {
         return salas.get(jugador);
     }
 
-    public synchronized void eliminarSala(String a, String b) {
-        salas.remove(a);
-        salas.remove(b);
+    public boolean existeSala(String jugadorA, String jugadorB) {
+        SalaJuego sala = salas.get(jugadorA);
+        return sala != null && sala.contiene(jugadorB);
+    }
+
+    public void eliminarSala(String jugadorA, String jugadorB) {
+        salas.remove(jugadorA);
+        salas.remove(jugadorB);
     }
 }

@@ -1,10 +1,13 @@
 package ServidorMulti;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.Socket;
 import java.util.List;
 
 public class UnCliente implements Runnable {
+
     private static final String TAG_SYS  = "[sistema] ";
     private static final String TAG_GAME = "[gato] ";
     private static final int LIMITE = 3;
@@ -63,22 +66,28 @@ public class UnCliente implements Runnable {
     private void procesarMensaje(String msg) {
         String m = msg.toUpperCase();
 
+        // registro / login
         if (m.startsWith("REGISTER ")) { registrar(msg); return; }
         if (m.startsWith("LOGIN "))    { login(msg); return; }
 
+        // grupos
         if (m.startsWith("CREARGRUPO ")) { crearGrupo(msg); return; }
         if (m.startsWith("ENTRAR "))     { entrarGrupo(msg); return; }
         if (m.equals("SALIRGRUPO"))      { salirGrupo(); return; }
         if (m.equals("GRUPOS"))          { listarGrupos(); return; }
 
+        // juego
         if (m.startsWith("JUGAR "))   { jugar(msg); return; }
         if (m.startsWith("ACEPTAR ")) { aceptar(msg); return; }
         if (m.startsWith("MOVER "))   { mover(msg); return; }
         if (m.equals("TABLERO"))      { mostrarTablero(); return; }
         if (m.equals("RENDIRSE"))     { rendirse(); return; }
         if (m.equals("PARTIDAS"))     { listarPartida(); return; }
+
+        // ranking
         if (m.startsWith("RANKING"))  { mostrarRanking(msg); return; }
 
+        // chat privado mientras hay partida
         SalaJuego sala = ServidorMulti.gestorJuegos.obtenerSala(nombre);
         if (sala != null) {
             String oponente = sala.getOponente(nombre);
@@ -89,6 +98,7 @@ public class UnCliente implements Runnable {
             return;
         }
 
+        // limite de mensajes si no esta logueado
         if (!autenticado && mensajes >= LIMITE) {
             enviar(TAG_SYS + "Has alcanzado el limite de mensajes. Registrate o inicia sesion.");
             return;
@@ -339,6 +349,18 @@ public class UnCliente implements Runnable {
     }
 
     private void desconectar() {
+        SalaJuego sala = ServidorMulti.gestorJuegos.obtenerSala(nombre);
+        if (sala != null) {
+            Juego j = sala.getJuego();
+            j.rendirse(nombre);
+            String otro = sala.getOponente(nombre);
+            UnCliente cli = ServidorMulti.clientes.get(otro);
+            if (cli != null) {
+                cli.enviar(TAG_GAME + "El jugador " + nombre + " se desconecto. Ganaste por abandono.");
+            }
+            ServidorMulti.gestorJuegos.eliminarSala(nombre, otro);
+        }
+
         ServidorMulti.clientes.remove(nombre);
         try {
             socket.close();
