@@ -6,6 +6,12 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GestorJuegos {
 
     private final Map<String, SalaJuego> salas = new ConcurrentHashMap<>();
+    
+    public boolean invitacionPendiente(String a, String b) {
+    SalaJuego sala = salas.get(a);
+    return sala != null && sala.contiene(b) && sala.estaPendiente();
+}
+
 
     public void crearSala(String jugadorA, String jugadorB) {
         Juego juego = new Juego(jugadorA, jugadorB);

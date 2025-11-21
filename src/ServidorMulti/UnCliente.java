@@ -199,6 +199,7 @@ public class UnCliente implements Runnable {
     // ===== juego del gato con salas =====
 
     private void jugar(String msg) {
+        
         String[] p = msg.split("\\s+");
         if (p.length < 2) {
             enviar(TAG_SYS + "Uso: JUGAR <usuario>");
