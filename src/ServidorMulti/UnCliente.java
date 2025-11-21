@@ -10,7 +10,7 @@ public class UnCliente implements Runnable {
 
     private static final String TAG_SYS  = "[sistema] ";
     private static final String TAG_GAME = "[gato] ";
-    private static final int LIMITE = 3;
+    private static final int LIMITE = 2;
 
     private final Socket socket;
     private final DataInputStream entrada;
@@ -98,11 +98,14 @@ public class UnCliente implements Runnable {
             return;
         }
 
+                mensajes++; // ← ahora los comandos también cuentan
+
         // limite de mensajes si no esta logueado
-        if (!autenticado && mensajes >= LIMITE) {
+        if (!autenticado && mensajes > LIMITE) {
             enviar(TAG_SYS + "Has alcanzado el limite de mensajes. Registrate o inicia sesion.");
             return;
         }
+
 
         mensajes++;
         db.guardarMensaje(grupoActual, nombre, msg);
@@ -115,10 +118,14 @@ public class UnCliente implements Runnable {
 
     // ===== registro y login =====
 
-    private void registrar(String msg) {
+           private void registrar(String msg) {
         String[] p = msg.split("\\s+");
         if (p.length < 3) {
             enviar(TAG_SYS + "Uso: REGISTER <usuario> <pass>");
+            return;
+        }
+        if (nombreProhibido(p[1])) {
+            enviar(TAG_SYS + "Nombre no valido. Usa otro.");
             return;
         }
         autenticado = true;
@@ -127,10 +134,16 @@ public class UnCliente implements Runnable {
         enviar(TAG_SYS + "Registro exitoso.");
     }
 
-    private void login(String msg) {
+
+
+       private void login(String msg) {
         String[] p = msg.split("\\s+");
         if (p.length < 3) {
             enviar(TAG_SYS + "Uso: LOGIN <usuario> <pass>");
+            return;
+        }
+        if (nombreProhibido(p[1])) {
+            enviar(TAG_SYS + "Nombre no valido. Usa otro.");
             return;
         }
         if (ServidorMulti.clientes.containsKey(p[1])) {
@@ -142,6 +155,7 @@ public class UnCliente implements Runnable {
         db.unirseAGrupo("Todos", nombre);
         enviar(TAG_SYS + "Inicio de sesion correcto.");
     }
+
 
     // ===== grupos =====
 
@@ -367,6 +381,11 @@ public class UnCliente implements Runnable {
         } catch (IOException ignore) {
         }
     }
+        private boolean nombreProhibido(String n) {
+        String t = n.toUpperCase();
+        return t.matches("REGISTER|LOGIN|CREARGRUPO|ENTRAR|SALIRGRUPO|GRUPOS|JUGAR|ACEPTAR|MOVER|TABLERO|RENDIRSE|PARTIDAS|RANKING");
+    }
+
 
     void enviar(String msg) {
         try {
@@ -375,3 +394,4 @@ public class UnCliente implements Runnable {
         }
     }
 }
+
