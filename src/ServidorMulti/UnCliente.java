@@ -10,7 +10,7 @@ public class UnCliente implements Runnable {
 
     private static final String TAG_SYS = "[sistema] ";
     private static final String TAG_GAME = "[gato] ";
-    private static final int LIMITE = 2;
+    private static final int LIMITE = 3; // ✔ límite solicitado
 
     private final Socket socket;
     private final DataInputStream entrada;
@@ -31,8 +31,9 @@ public class UnCliente implements Runnable {
 
         db.unirseAGrupo("Todos", nombre);
 
-        enviar(TAG_SYS + "Eres " + nombre + ". Solo puedes enviar 3 mensajes sin registrarte.");
-        enviar(TAG_SYS + "Comandos disponibles:");
+        // ✔ Ya no se muestra [sistema] al inicio
+        enviar("Eres " + nombre + ". Solo puedes enviar " + LIMITE + " mensajes sin registrarte.");
+        enviar("Comandos disponibles:");
         enviar("REGISTER <usuario> <pass>");
         enviar("LOGIN <usuario> <pass>");
         enviar("CREARGRUPO <nombre>");
@@ -66,24 +67,15 @@ public class UnCliente implements Runnable {
     }
 
     private void procesarMensaje(String msg) {
-        // No enviar mensajes vacíos
+        // ❌ Mensajes vacíos no permitidos
         if (msg.trim().isEmpty()) {
             enviar(TAG_SYS + "No puedes enviar mensajes vacios.");
             return;
         }
 
-        // Contar todo (comandos y chat)
-        mensajes++;
-
-        // si alcanzó límite y no está autenticado
-        if (!autenticado && mensajes > LIMITE) {
-            enviar(TAG_SYS + "Has alcanzado el limite de mensajes. Registrate o inicia sesion.");
-            return;
-        }
-
         String m = msg.toUpperCase();
 
-        // registro / login
+        // ✔ Primero permitir REGISTER/LOGIN aunque exceda límite
         if (m.startsWith("REGISTER ")) {
             registrar(msg);
             return;
@@ -93,7 +85,17 @@ public class UnCliente implements Runnable {
             return;
         }
 
-        // grupos
+        // ✔ AHORA contamos el mensaje
+        mensajes++;
+
+        // ❗ Bloquear mensajes si superó límite y no inició sesión
+        if (!autenticado && mensajes > LIMITE) {
+            enviar(TAG_SYS + "Has alcanzado el limite de mensajes. Registrate o inicia sesion.");
+            return;
+        }
+
+        // 🔽 A partir de aquí el límite ya no bloquea REGISTER/LOGIN
+        // ===== comandos de grupos =====
         if (m.startsWith("CREARGRUPO ")) {
             crearGrupo(msg);
             return;
@@ -111,7 +113,7 @@ public class UnCliente implements Runnable {
             return;
         }
 
-        // juego
+        // ===== comandos de juego =====
         if (m.startsWith("JUGAR ")) {
             jugar(msg);
             return;
@@ -137,13 +139,13 @@ public class UnCliente implements Runnable {
             return;
         }
 
-        // ranking
+        // ===== RANKING =====
         if (m.startsWith("RANKING")) {
             mostrarRanking(msg);
             return;
         }
 
-        // chat privado si hay juego
+        // ===== chat privado si hay partida =====
         SalaJuego sala = ServidorMulti.gestorJuegos.obtenerSala(nombre);
         if (sala != null) {
             String oponente = sala.getOponente(nombre);
@@ -154,7 +156,7 @@ public class UnCliente implements Runnable {
             return;
         }
 
-        // mensaje grupal
+        // ===== mensaje normal al grupo =====
         db.guardarMensaje(grupoActual, nombre, msg);
         for (UnCliente cli : ServidorMulti.clientes.values()) {
             if (cli == this) {
@@ -167,7 +169,7 @@ public class UnCliente implements Runnable {
         }
     }
 
-    // ===== registro y login =====
+    // ===== Registro/Login =====
     private void registrar(String msg) {
         String[] p = msg.split("\\s+");
         if (p.length < 3) {
@@ -209,8 +211,8 @@ public class UnCliente implements Runnable {
         return t.matches("REGISTER|LOGIN|CREARGRUPO|ENTRAR|SALIRGRUPO|GRUPOS|JUGAR|ACEPTAR|MOVER|TABLERO|RENDIRSE|PARTIDAS|RANKING");
     }
 
-    // ===== resto del código (grupos / juego / ranking) =====
-    // Tu código siguió igual ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+    // 🔽 (todos tus métodos de grupos/juego/ranking se mantienen igual)
+    // ===== Grupos =====
     private void crearGrupo(String msg) {
         String[] p = msg.split("\\s+");
         if (p.length < 2) {
@@ -262,6 +264,7 @@ public class UnCliente implements Runnable {
         }
     }
 
+    // ===== Juego =====
     private void jugar(String msg) {
         String[] p = msg.split("\\s+");
         if (p.length < 2) {
@@ -282,7 +285,6 @@ public class UnCliente implements Runnable {
             enviar(TAG_SYS + "Ya hay una partida con ese usuario.");
             return;
         }
-
         ServidorMulti.gestorJuegos.crearSala(nombre, otro);
         cli.enviar(TAG_GAME + nombre + " te invito a jugar. Escribe: ACEPTAR " + nombre);
         enviar(TAG_GAME + "Invitacion enviada a " + otro);
@@ -299,16 +301,13 @@ public class UnCliente implements Runnable {
             enviar(TAG_SYS + "No hay invitacion.");
             return;
         }
-
         SalaJuego sala = ServidorMulti.gestorJuegos.obtenerSala(nombre);
         if (sala == null || !sala.contiene(otro)) {
             enviar(TAG_SYS + "No hay invitacion.");
             return;
         }
-
         Juego j = sala.getJuego();
         UnCliente cli = ServidorMulti.clientes.get(otro);
-
         enviar(TAG_GAME + "Partida iniciada. Empieza: " + j.getTurno());
         if (cli != null) {
             cli.enviar(TAG_GAME + "Partida iniciada. Empieza: " + j.getTurno());
@@ -332,18 +331,15 @@ public class UnCliente implements Runnable {
             enviar(TAG_SYS + "Posicion invalida.");
             return;
         }
-
         SalaJuego sala = ServidorMulti.gestorJuegos.obtenerSala(nombre);
         if (sala == null) {
             enviar(TAG_SYS + "No tienes partida activa.");
             return;
         }
-
         Juego j = sala.getJuego();
         String res = j.realizarMovimiento(nombre, pos);
         String otro = sala.getOponente(nombre);
         UnCliente cli = ServidorMulti.clientes.get(otro);
-
         enviar(TAG_GAME + res);
         if (cli != null) {
             cli.enviar(TAG_GAME + res);
@@ -391,6 +387,7 @@ public class UnCliente implements Runnable {
         enviar(TAG_GAME + "Contra " + otro + " - " + estado + " - Turno: " + j.getTurno());
     }
 
+    // ===== Ranking =====
     private void mostrarRanking(String msg) {
         String[] p = msg.split("\\s+");
         if (p.length == 1) {
@@ -402,6 +399,7 @@ public class UnCliente implements Runnable {
         }
     }
 
+    // ===== Utilidades =====
     private void cambiarNombre(String nuevo) {
         ServidorMulti.clientes.remove(nombre);
         nombre = nuevo;
@@ -420,7 +418,6 @@ public class UnCliente implements Runnable {
             }
             ServidorMulti.gestorJuegos.eliminarSala(nombre, otro);
         }
-
         ServidorMulti.clientes.remove(nombre);
         try {
             socket.close();
